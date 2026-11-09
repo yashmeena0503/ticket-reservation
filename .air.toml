@@ -1,0 +1,9 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -buildvcs=false -o ./tmp/main ./cmd/api"
+entrypoint = "./tmp/main"
+include_ext = [ "go" ]
+exclude_dir = [ "tmp" ]
+delay = 500

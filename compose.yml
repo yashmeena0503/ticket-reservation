@@ -1,0 +1,42 @@
+services:
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./tmp/pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d app" ]
+      interval: 2s
+      retries: 15
+
+  migrate:
+    image: migrate/migrate:4
+    volumes:
+      - ./db/migrations:/migrations:ro
+    command: [ "-path=/migrations", "-database=${DATABASE_URL}", "up" ]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api-dev:
+    build:
+      context: .
+      dockerfile: dockerfile.dev
+    ports:
+      # use the port from .env or default to 3000
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app # mount
+      # i don't really like using docker volumes so mounting into ./tmp/
+      - ./tmp/go-mod-cache:/go/pkg/mod # persistent modules
+      - ./tmp/go-build-cache:/root/.cache/go-build # build cache
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
