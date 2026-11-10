@@ -2,16 +2,20 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"reservation/internal/platform/config"
 	"reservation/internal/platform/database"
+	"syscall"
 	"time"
 )
 
 func main() {
-	ctx := context.Background() // TODO: swap for graceful shutdown context
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// init config
 	cfg, err := config.Load()
@@ -39,11 +43,26 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	// start listening on port
-	slog.Info("listening", "port", cfg.Port)
-	err = server.ListenAndServe()
-	if err != nil {
-		slog.Error("server error", "err", err)
+	errCh := make(chan error, 1)
+	go func() {
+		slog.Info("listening", "port", cfg.Port)
+		errCh <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-errCh:
+		// server died by itself
+		if !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server error", "err", err)
+		}
+	case <-ctx.Done():
+		slog.Info("shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := server.Shutdown(shutdownCtx)
+		if err != nil {
+			slog.Error("shutdown error", "err", err)
+		}
 	}
 }
 
