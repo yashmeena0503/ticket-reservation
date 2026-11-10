@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"reservation/internal/platform/config"
 	"reservation/internal/platform/database"
+	"reservation/internal/platform/httpx"
 	"syscall"
 	"time"
 
@@ -16,6 +17,9 @@ import (
 )
 
 func main() {
+	// init logger
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -38,11 +42,15 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /ready", ready(pool))
+	// middlewares
+	handler := httpx.Recovery(mux)
+	handler = httpx.Logging(handler)
+	handler = httpx.RequestId(handler)
 
 	// init server
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -69,13 +77,13 @@ func main() {
 	}
 }
 
-func health(w http.ResponseWriter, req *http.Request) {
+func health(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
 func ready(pool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
-		ctx, cancel := context.WithTimeout(req.Context(), 2 * time.Second)
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		err := pool.Ping(ctx)
 		if err != nil {
