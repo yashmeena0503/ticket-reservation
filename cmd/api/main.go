@@ -11,6 +11,8 @@ import (
 	"reservation/internal/platform/database"
 	"syscall"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -35,6 +37,7 @@ func main() {
 	// init serve mux
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
+	mux.HandleFunc("GET /ready", ready(pool))
 
 	// init server
 	server := &http.Server{
@@ -68,4 +71,18 @@ func main() {
 
 func health(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
+}
+
+func ready(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		ctx, cancel := context.WithTimeout(req.Context(), 2 * time.Second)
+		defer cancel()
+		err := pool.Ping(ctx)
+		if err != nil {
+			slog.Error("ready check failed", "err", err)
+			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}
 }
