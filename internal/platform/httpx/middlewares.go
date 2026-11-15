@@ -7,15 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
-
-type requestIdCtxKey struct{}
-
-func RequestIdFrom(ctx context.Context) string {
-	id, _ := ctx.Value(requestIdCtxKey{}).(string)
-	return id
-}
 
 func RequestId(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -73,5 +69,21 @@ func Recovery(next http.Handler) http.Handler {
 			}
 		}()
 		next.ServeHTTP(w, r)
+	})
+}
+
+func RequireAuth(verify func(string) (uuid.UUID, error), next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !ok {
+			WriteError(w, http.StatusUnauthorized, "missing bearer token")
+			return
+		}
+		id, err := verify(token)
+		if err != nil {
+			WriteError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userCtxKey{}, id)))
 	})
 }

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"reservation/internal/auth"
+	"reservation/internal/db"
 	"reservation/internal/platform/config"
 	"reservation/internal/platform/database"
 	"reservation/internal/platform/httpx"
@@ -38,10 +40,13 @@ func main() {
 	}
 	defer pool.Close()
 
+	authService := auth.NewService(db.New(pool), cfg.JWTSecret)
 	// init serve mux
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /ready", ready(pool))
+	// endpoints with authorization
+	auth.Register(mux, authService)
 	// middlewares
 	handler := httpx.Recovery(mux)
 	handler = httpx.Logging(handler)
