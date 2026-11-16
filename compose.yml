@@ -40,3 +40,13 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  k6:
+    image: grafana/k6:v2
+    profiles: [ "tools" ]
+    environment:
+      BASE_URL: http://api-dev:3000
+    volumes:
+      - ./tests:/scripts:ro
+    depends_on:
+      - api-dev
