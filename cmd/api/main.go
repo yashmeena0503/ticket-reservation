@@ -48,7 +48,7 @@ func main() {
 	mux.HandleFunc("GET /ready", ready(pool))
 	// endpoints with authorization
 	auth.Register(mux, authService)
-	events.Register(mux, db.New(pool), authService)
+	events.Register(mux, pool, authService)
 	// middlewares
 	handler := httpx.Recovery(mux)
 	handler = httpx.Logging(handler)

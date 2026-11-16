@@ -12,8 +12,26 @@ import (
 	"github.com/google/uuid"
 )
 
-const listEventsAfter = `-- name: ListEventsAfter :many
+const getEvent = `-- name: GetEvent :one
+SELECT id, organizer_id, name, description, venue, starts_at, created_at FROM events WHERE id = $1
+`
 
+func (q *Queries) GetEvent(ctx context.Context, id uuid.UUID) (Event, error) {
+	row := q.db.QueryRow(ctx, getEvent, id)
+	var i Event
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizerID,
+		&i.Name,
+		&i.Description,
+		&i.Venue,
+		&i.StartsAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listEventsAfter = `-- name: ListEventsAfter :many
 SELECT id, organizer_id, name, description, venue, starts_at, created_at FROM events
 WHERE (starts_at, id) > ($1::timestamptz, $2::uuid)
 ORDER BY starts_at, id
@@ -32,7 +50,7 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Event
+	items := []Event{}
 	for rows.Next() {
 		var i Event
 		if err := rows.Scan(
@@ -43,6 +61,53 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 			&i.Venue,
 			&i.StartsAt,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSectionsWithAvailability = `-- name: ListSectionsWithAvailability :many
+SELECT s.id, s.event_id, s.name, s.price,
+count(st.id)::int AS total_seats,
+count(st.id) FILTER (WHERE st.status = 'available')::int AS available_seats
+FROM sections s
+LEFT JOIN seats st ON st.section_id = s.id
+WHERE s.event_id = $1
+GROUP BY s.id
+ORDER BY s.name
+`
+
+type ListSectionsWithAvailabilityRow struct {
+	ID             uuid.UUID `json:"id"`
+	EventID        uuid.UUID `json:"event_id"`
+	Name           string    `json:"name"`
+	Price          int32     `json:"price"`
+	TotalSeats     int32     `json:"total_seats"`
+	AvailableSeats int32     `json:"available_seats"`
+}
+
+func (q *Queries) ListSectionsWithAvailability(ctx context.Context, eventID uuid.UUID) ([]ListSectionsWithAvailabilityRow, error) {
+	rows, err := q.db.Query(ctx, listSectionsWithAvailability, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSectionsWithAvailabilityRow{}
+	for rows.Next() {
+		var i ListSectionsWithAvailabilityRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.Name,
+			&i.Price,
+			&i.TotalSeats,
+			&i.AvailableSeats,
 		); err != nil {
 			return nil, err
 		}
@@ -85,6 +150,36 @@ func (q *Queries) NewEvent(ctx context.Context, arg NewEventParams) (Event, erro
 		&i.Venue,
 		&i.StartsAt,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+type NewSeatParams struct {
+	SectionID  uuid.UUID `json:"section_id"`
+	RowLabel   string    `json:"row_label"`
+	SeatNumber int32     `json:"seat_number"`
+}
+
+const newSection = `-- name: NewSection :one
+INSERT INTO sections (event_id, name, price)
+VALUES ($1, $2, $3)
+RETURNING id, event_id, name, price
+`
+
+type NewSectionParams struct {
+	EventID uuid.UUID `json:"event_id"`
+	Name    string    `json:"name"`
+	Price   int32     `json:"price"`
+}
+
+func (q *Queries) NewSection(ctx context.Context, arg NewSectionParams) (Section, error) {
+	row := q.db.QueryRow(ctx, newSection, arg.EventID, arg.Name, arg.Price)
+	var i Section
+	err := row.Scan(
+		&i.ID,
+		&i.EventID,
+		&i.Name,
+		&i.Price,
 	)
 	return i, err
 }
