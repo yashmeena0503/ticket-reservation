@@ -10,6 +10,31 @@ import (
 	"github.com/google/uuid"
 )
 
+type Event struct {
+	ID          uuid.UUID `json:"id"`
+	OrganizerID uuid.UUID `json:"organizer_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Venue       string    `json:"venue"`
+	StartsAt    time.Time `json:"starts_at"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type Seat struct {
+	ID         uuid.UUID `json:"id"`
+	SectionID  uuid.UUID `json:"section_id"`
+	RowLabel   string    `json:"row_label"`
+	SeatNumber int32     `json:"seat_number"`
+	Status     string    `json:"status"`
+}
+
+type Section struct {
+	ID      uuid.UUID `json:"id"`
+	EventID uuid.UUID `json:"event_id"`
+	Name    string    `json:"name"`
+	Price   int32     `json:"price"`
+}
+
 type User struct {
 	ID           uuid.UUID `json:"id"`
 	CreatedAt    time.Time `json:"created_at"`

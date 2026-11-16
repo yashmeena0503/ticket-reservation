@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"reservation/internal/auth"
 	"reservation/internal/db"
+	"reservation/internal/events"
 	"reservation/internal/platform/config"
 	"reservation/internal/platform/database"
 	"reservation/internal/platform/httpx"
@@ -47,6 +48,7 @@ func main() {
 	mux.HandleFunc("GET /ready", ready(pool))
 	// endpoints with authorization
 	auth.Register(mux, authService)
+	events.Register(mux, db.New(pool), authService)
 	// middlewares
 	handler := httpx.Recovery(mux)
 	handler = httpx.Logging(handler)
